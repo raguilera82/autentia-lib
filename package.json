@@ -1,5 +1,5 @@
 {
-  "name": "polymer-lib",
+  "name": "autentia-lib",
   "version": "1.0.0",
   "description": "",
   "main": "index.html",
@@ -8,7 +8,6 @@
     "bower": "./node_modules/bower/bin/bower",
     "live": "./node_modules/live-server/live-server.js",
     "pro": "./node_modules/vulcanize/bin/vulcanize lib/elements.html > dist/bundle.html",
-    "publish": "npm publish --registry=http://localhost:8081/repository/npm-internal/",
     "postinstall": "bower install && mv ../autentia-lib/ ../../src/assets/"
   },
   "keywords": [],
@@ -18,5 +17,8 @@
     "bower": "^1.7.9",
     "live-server": "^0.9.2",
     "vulcanize": "^1.14.8"
+  },
+  "publishConfig": {
+    "registry": "http://localhost:8081/repository/npm-internal/"
   }
 }
