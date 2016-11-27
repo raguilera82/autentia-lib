@@ -15,7 +15,8 @@
   "license": "ISC",
   "devDependencies": {
     "bower": "^1.7.9",
-    "live-server": "^1.1.0"
+    "live-server": "^1.1.0",
+    "vulcanize": "^1.14.12"
   },
   "publishConfig": {
     "registry": "http://localhost:8081/repository/npm-internal/"
