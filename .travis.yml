@@ -1,0 +1,32 @@
+sudo: required
+
+dist: xenial
+
+language: node_js
+
+cache:
+    directories:
+    - node_modules
+    - bower_components
+
+notifications:
+    email: false
+
+node_js:
+- '7'
+
+before_install:
+- npm i -g npm@^3.0.0
+
+before_script:
+- npm prune
+
+script:
+- npm run pro
+
+after_success:
+- test $TRAVIS_PULL_REQUEST == "false" && test $TRAVIS_BRANCH == "master" && bash deploy.sh
+
+branches:
+  except:
+  - "/^v\\d+\\.\\d+\\.\\d+$/"

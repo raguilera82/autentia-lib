@@ -140,6 +140,7 @@ settings.useNativeShadow = settings.useShadow && settings.nativeShadow;
 settings.usePolyfillProto = !settings.useNativeCustomElements && !Object.__proto__;
 settings.hasNativeCSSProperties = !navigator.userAgent.match('AppleWebKit/601') && window.CSS && CSS.supports && CSS.supports('box-shadow', '0 0 0 var(--foo)');
 settings.useNativeCSSProperties = settings.hasNativeCSSProperties && settings.lazyRegister && settings.useNativeCSSProperties;
+settings.isIE = navigator.userAgent.match('Trident');
 return settings;
 }()
 };(function () {
@@ -151,15 +152,15 @@ prototype = prototype.prototype;
 if (!prototype) {
 prototype = {};
 }
-var factory = desugar(prototype);
-prototype = factory.prototype;
+prototype = desugar(prototype);
+var customCtor = prototype === prototype.constructor.prototype ? prototype.constructor : null;
 var options = { prototype: prototype };
 if (prototype.extends) {
 options.extends = prototype.extends;
 }
 Polymer.telemetry._registrate(prototype);
-document.registerElement(prototype.is, options);
-return factory;
+var ctor = document.registerElement(prototype.is, options);
+return customCtor || ctor;
 };
 var desugar = function (prototype) {
 var base = Polymer.Base;
@@ -168,14 +169,20 @@ base = Polymer.Base._getExtendedPrototype(prototype.extends);
 }
 prototype = Polymer.Base.chainObject(prototype, base);
 prototype.registerCallback();
-return prototype.constructor;
+return prototype;
 };
 if (userPolymer) {
 for (var i in userPolymer) {
 Polymer[i] = userPolymer[i];
 }
 }
-Polymer.Class = desugar;
+Polymer.Class = function (prototype) {
+if (!prototype.factoryImpl) {
+prototype.factoryImpl = function () {
+};
+}
+return desugar(prototype).constructor;
+};
 }());
 Polymer.telemetry = {
 registrations: [],
@@ -193,7 +200,7 @@ this.registrations.forEach(this._regLog);
 enumerable: true,
 configurable: true,
 get: function () {
-return (document._currentScript || document.currentScript).ownerDocument;
+return (document._currentScript || document.currentScript || {}).ownerDocument;
 }
 });Polymer.RenderStatus = {
 _ready: false,
@@ -272,7 +279,7 @@ var settings = Polymer.Settings;
 Polymer.Base = {
 __isPolymerInstance__: true,
 _addFeature: function (feature) {
-this.extend(this, feature);
+this.mixin(this, feature);
 },
 registerCallback: function () {
 if (settings.lazyRegister === 'max') {
@@ -281,7 +288,15 @@ this.beforeRegister();
 }
 } else {
 this._desugarBehaviors();
-this._doBehavior('beforeRegister');
+for (var i = 0, b; i < this.behaviors.length; i++) {
+b = this.behaviors[i];
+if (b.beforeRegister) {
+b.beforeRegister.call(this);
+}
+}
+if (this.beforeRegister) {
+this.beforeRegister();
+}
 }
 this._registerFeatures();
 if (!settings.lazyRegister) {
@@ -289,12 +304,33 @@ this.ensureRegisterFinished();
 }
 },
 createdCallback: function () {
+if (settings.disableUpgradeEnabled) {
+if (this.hasAttribute('disable-upgrade')) {
+this._propertySetter = disableUpgradePropertySetter;
+this._configValue = null;
+this.__data__ = {};
+return;
+} else {
+this.__hasInitialized = true;
+}
+}
+this.__initialize();
+},
+__initialize: function () {
 if (!this.__hasRegisterFinished) {
 this._ensureRegisterFinished(this.__proto__);
 }
 Polymer.telemetry.instanceCount++;
 this.root = this;
-this._doBehavior('created');
+for (var i = 0, b; i < this.behaviors.length; i++) {
+b = this.behaviors[i];
+if (b.created) {
+b.created.call(this);
+}
+}
+if (this.created) {
+this.created();
+}
 this._initFeatures();
 },
 ensureRegisterFinished: function () {
@@ -304,13 +340,26 @@ _ensureRegisterFinished: function (proto) {
 if (proto.__hasRegisterFinished !== proto.is || !proto.is) {
 if (settings.lazyRegister === 'max') {
 proto._desugarBehaviors();
-proto._doBehaviorOnly('beforeRegister');
+for (var i = 0, b; i < proto.behaviors.length; i++) {
+b = proto.behaviors[i];
+if (b.beforeRegister) {
+b.beforeRegister.call(proto);
+}
+}
 }
 proto.__hasRegisterFinished = proto.is;
 if (proto._finishRegisterFeatures) {
 proto._finishRegisterFeatures();
 }
-proto._doBehavior('registered');
+for (var j = 0, pb; j < proto.behaviors.length; j++) {
+pb = proto.behaviors[j];
+if (pb.registered) {
+pb.registered.call(proto);
+}
+}
+if (proto.registered) {
+proto.registered();
+}
 if (settings.usePolyfillProto && proto !== this) {
 proto.extend(this, proto);
 }
@@ -320,23 +369,43 @@ attachedCallback: function () {
 var self = this;
 Polymer.RenderStatus.whenReady(function () {
 self.isAttached = true;
-self._doBehavior('attached');
+for (var i = 0, b; i < self.behaviors.length; i++) {
+b = self.behaviors[i];
+if (b.attached) {
+b.attached.call(self);
+}
+}
+if (self.attached) {
+self.attached();
+}
 });
 },
 detachedCallback: function () {
 var self = this;
 Polymer.RenderStatus.whenReady(function () {
 self.isAttached = false;
-self._doBehavior('detached');
+for (var i = 0, b; i < self.behaviors.length; i++) {
+b = self.behaviors[i];
+if (b.detached) {
+b.detached.call(self);
+}
+}
+if (self.detached) {
+self.detached();
+}
 });
 },
 attributeChangedCallback: function (name, oldValue, newValue) {
 this._attributeChangedImpl(name);
-this._doBehavior('attributeChanged', [
-name,
-oldValue,
-newValue
-]);
+for (var i = 0, b; i < this.behaviors.length; i++) {
+b = this.behaviors[i];
+if (b.attributeChanged) {
+b.attributeChanged.call(this, name, oldValue, newValue);
+}
+}
+if (this.attributeChanged) {
+this.attributeChanged(name, oldValue, newValue);
+}
 },
 _attributeChangedImpl: function (name) {
 this._setAttributeToProperty(this, name);
@@ -407,6 +476,23 @@ object.__proto__ = inherited;
 return object;
 };
 Polymer.Base = Polymer.Base.chainObject(Polymer.Base, HTMLElement.prototype);
+Polymer.BaseDescriptors = {};
+var disableUpgradePropertySetter;
+if (settings.disableUpgradeEnabled) {
+disableUpgradePropertySetter = function (property, value) {
+this.__data__[property] = value;
+};
+var origAttributeChangedCallback = Polymer.Base.attributeChangedCallback;
+Polymer.Base.attributeChangedCallback = function (name, oldValue, newValue) {
+if (!this.__hasInitialized && name === 'disable-upgrade') {
+this.__hasInitialized = true;
+this._propertySetter = Polymer.Bind._modelApi._propertySetter;
+this._configValue = Polymer.Base._configValue;
+this.__initialize();
+}
+origAttributeChangedCallback.call(this, name, oldValue, newValue);
+};
+}
 if (window.CustomElements) {
 Polymer.instanceof = CustomElements.instanceof;
 } else {
@@ -428,8 +514,7 @@ var DomModule = function () {
 return document.createElement('dom-module');
 };
 DomModule.prototype = Object.create(HTMLElement.prototype);
-Polymer.Base.extend(DomModule.prototype, {
-constructor: DomModule,
+Polymer.Base.mixin(DomModule.prototype, {
 createdCallback: function () {
 this.register();
 },
@@ -454,6 +539,11 @@ m = m.querySelector(selector);
 return m;
 }
 }
+});
+Object.defineProperty(DomModule.prototype, 'constructor', {
+value: DomModule,
+configurable: true,
+writable: true
 });
 var cePolyfill = window.CustomElements && !CustomElements.useNative;
 document.registerElement('dom-module', DomModule);
@@ -519,9 +609,14 @@ return flat;
 },
 _mixinBehavior: function (b) {
 var n$ = Object.getOwnPropertyNames(b);
+var useAssignment = b._noAccessors;
 for (var i = 0, n; i < n$.length && (n = n$[i]); i++) {
 if (!Polymer.Base._behaviorProperties[n] && !this.hasOwnProperty(n)) {
+if (useAssignment) {
+this[n] = b[n];
+} else {
 this.copyOwnProperty(n, b, this);
+}
 }
 }
 },
@@ -533,23 +628,6 @@ for (var i = 0, l = behaviors.length; i < l; i++) {
 this._prepBehavior(behaviors[i]);
 }
 this._prepBehavior(this);
-},
-_doBehavior: function (name, args) {
-for (var i = 0; i < this.behaviors.length; i++) {
-this._invokeBehavior(this.behaviors[i], name, args);
-}
-this._invokeBehavior(this, name, args);
-},
-_doBehaviorOnly: function (name, args) {
-for (var i = 0; i < this.behaviors.length; i++) {
-this._invokeBehavior(this.behaviors[i], name, args);
-}
-},
-_invokeBehavior: function (b, name, args) {
-var fn = b[name];
-if (fn) {
-fn.apply(this, args || Polymer.nar);
-}
 },
 _marshalBehaviors: function () {
 for (var i = 0; i < this.behaviors.length; i++) {
@@ -569,7 +647,8 @@ created: true,
 attached: true,
 detached: true,
 attributeChanged: true,
-ready: true
+ready: true,
+_noAccessors: true
 };Polymer.Base._addFeature({
 _getExtendedPrototype: function (tag) {
 return this._getExtendedNativePrototype(tag);
@@ -578,8 +657,14 @@ _nativePrototypes: {},
 _getExtendedNativePrototype: function (tag) {
 var p = this._nativePrototypes[tag];
 if (!p) {
-var np = this.getNativePrototype(tag);
-p = this.extend(Object.create(np), Polymer.Base);
+p = Object.create(this.getNativePrototype(tag));
+var p$ = Object.getOwnPropertyNames(Polymer.Base);
+for (var i = 0, n; i < p$.length && (n = p$[i]); i++) {
+if (!Polymer.BaseDescriptors[n]) {
+p[n] = Polymer.Base[n];
+}
+}
+Object.defineProperties(p, Polymer.BaseDescriptors);
 this._nativePrototypes[tag] = p;
 }
 return p;
@@ -615,7 +700,6 @@ return elt;
 }
 });Polymer.nob = Object.create(null);
 Polymer.Base._addFeature({
-properties: {},
 getPropertyInfo: function (property) {
 var info = this._getPropertyInfo(property, this.properties);
 if (!info) {
@@ -672,7 +756,17 @@ t.readOnly = s.readOnly;
 }
 }
 }
-});Polymer.CaseMap = {
+});
+(function () {
+var propertiesDesc = {
+configurable: true,
+writable: true,
+enumerable: true,
+value: {}
+};
+Polymer.BaseDescriptors.properties = propertiesDesc;
+Object.defineProperty(Polymer.Base, 'properties', propertiesDesc);
+}());Polymer.CaseMap = {
 _caseMap: {},
 _rx: {
 dashToCamel: /-[a-z]/g,
@@ -796,7 +890,7 @@ default:
 return value != null ? value : undefined;
 }
 }
-});Polymer.version = "1.7.0";Polymer.Base._addFeature({
+});Polymer.version = "1.8.1";Polymer.Base._addFeature({
 _registerFeatures: function () {
 this._prepIs();
 this._prepBehaviors();
@@ -812,7 +906,19 @@ _initFeatures: function () {
 this._marshalHostAttributes();
 this._marshalBehaviors();
 }
-});</script><script>Polymer.Base._addFeature({
+});</script>
+
+
+
+
+
+
+
+
+
+
+
+<script>Polymer.Base._addFeature({
 _prepTemplate: function () {
 if (this._template === undefined) {
 this._template = Polymer.DomModule.import(this.is, 'template');
@@ -887,7 +993,15 @@ c._ready();
 this._finishDistribute();
 },
 _readySelf: function () {
-this._doBehavior('ready');
+for (var i = 0, b; i < this.behaviors.length; i++) {
+b = this.behaviors[i];
+if (b.ready) {
+b.ready.call(this);
+}
+}
+if (this.ready) {
+this.ready();
+}
 this._readied = true;
 if (this._attachedPending) {
 this._attachedPending = false;
@@ -1500,7 +1614,7 @@ return;
 }
 var nativeCloneNode = Element.prototype.cloneNode;
 var nativeImportNode = Document.prototype.importNode;
-Polymer.Base.extend(DomApi.prototype, {
+Polymer.Base.mixin(DomApi.prototype, {
 _lazyDistribute: function (host) {
 if (host.shadyRoot && host.shadyRoot._distributionClean) {
 host.shadyRoot._distributionClean = false;
@@ -1964,7 +2078,7 @@ var DomApi = Polymer.DomApi;
 if (!Settings.useShadow) {
 return;
 }
-Polymer.Base.extend(DomApi.prototype, {
+Polymer.Base.mixin(DomApi.prototype, {
 querySelectorAll: function (selector) {
 return TreeApi.arrayCopy(this.node.querySelectorAll(selector));
 },
@@ -2074,7 +2188,7 @@ forwardProperties([
 'nextElementSibling',
 'previousElementSibling'
 ]);
-}());Polymer.Base.extend(Polymer.dom, {
+}());Polymer.Base.mixin(Polymer.dom, {
 _flushGuard: 0,
 _FLUSH_MAX: 100,
 _needsTakeRecords: !Polymer.Settings.useNativeCustomElements,
@@ -2375,7 +2489,7 @@ enableShadowAttributeTracking: function () {
 if (Settings.useShadow) {
 var baseSetup = DomApi.EffectiveNodesObserver.prototype._setup;
 var baseCleanup = DomApi.EffectiveNodesObserver.prototype._cleanup;
-Polymer.Base.extend(DomApi.EffectiveNodesObserver.prototype, {
+Polymer.Base.mixin(DomApi.EffectiveNodesObserver.prototype, {
 _setup: function () {
 if (!this._observer) {
 var self = this;
@@ -2437,7 +2551,7 @@ DomApi.DistributedNodesObserver = function (domApi) {
 DomApi.EffectiveNodesObserver.call(this, domApi);
 };
 DomApi.DistributedNodesObserver.prototype = Object.create(DomApi.EffectiveNodesObserver.prototype);
-Polymer.Base.extend(DomApi.DistributedNodesObserver.prototype, {
+Polymer.Base.mixin(DomApi.DistributedNodesObserver.prototype, {
 _setup: function () {
 },
 _cleanup: function () {
@@ -2449,7 +2563,7 @@ return this.domApi.getDistributedNodes();
 }
 });
 if (Settings.useShadow) {
-Polymer.Base.extend(DomApi.DistributedNodesObserver.prototype, {
+Polymer.Base.mixin(DomApi.DistributedNodesObserver.prototype, {
 _setup: function () {
 if (!this._observer) {
 var root = this.domApi.getOwnerRoot();
@@ -2526,10 +2640,6 @@ TreeApi.Logical.saveChildNodes(c);
 TreeApi.Logical.saveChildNodes(c.parentNode);
 }
 this.shadyRoot.host = this;
-},
-get domHost() {
-var root = Polymer.dom(this).getOwnerRoot();
-return root && root.host;
 },
 distributeContent: function (updateInsertionPoints) {
 if (this.shadyRoot) {
@@ -2717,6 +2827,15 @@ _elementAdd: function () {
 _elementRemove: function () {
 }
 });
+var domHostDesc = {
+get: function () {
+var root = Polymer.dom(this).getOwnerRoot();
+return root && root.host;
+},
+configurable: true
+};
+Object.defineProperty(Polymer.Base, 'domHost', domHostDesc);
+Polymer.BaseDescriptors.domHost = domHostDesc;
 function distributeNodeInto(child, insertionPoint) {
 insertionPoint._distributedNodes.push(child);
 var points = child._destinationInsertionPoints;
@@ -2949,12 +3068,14 @@ this._tryReady();
 },
 _marshalBehavior: function (b) {
 }
-});</script><script>Polymer.nar = [];
+});</script><script>(function () {
+Polymer.nar = [];
+var disableUpgradeEnabled = Polymer.Settings.disableUpgradeEnabled;
 Polymer.Annotations = {
-parseAnnotations: function (template) {
+parseAnnotations: function (template, stripWhiteSpace) {
 var list = [];
 var content = template._content || template.content;
-this._parseNodeAnnotations(content, list, template.hasAttribute('strip-whitespace'));
+this._parseNodeAnnotations(content, list, stripWhiteSpace || template.hasAttribute('strip-whitespace'));
 return list;
 },
 _parseNodeAnnotations: function (node, list, stripWhiteSpace) {
@@ -3065,7 +3186,7 @@ var i = 0;
 while (node) {
 var next = node.nextSibling;
 if (node.localName === 'template' && !node.hasAttribute('preserve-content')) {
-this._parseTemplate(node, i, list, annote);
+this._parseTemplate(node, i, list, annote, stripWhiteSpace);
 }
 if (node.localName == 'slot') {
 node = this._replaceSlotWithContent(node);
@@ -3106,14 +3227,15 @@ var attr = attrs[i];
 content.setAttribute(attr.name, attr.value);
 }
 var name = slot.getAttribute('name');
-var select = name ? '[slot=\'' + name + '\']' : ':not([slot])';
-content.setAttribute('select', select);
+if (name) {
+content.setAttribute('select', '[slot=\'' + name + '\']');
+}
 slot.parentNode.replaceChild(content, slot);
 return content;
 },
-_parseTemplate: function (node, index, list, parent) {
+_parseTemplate: function (node, index, list, parent, stripWhiteSpace) {
 var content = document.createDocumentFragment();
-content._notes = this.parseAnnotations(node);
+content._notes = this.parseAnnotations(node, stripWhiteSpace);
 content.appendChild(node.content);
 list.push({
 bindings: Polymer.nar,
@@ -3158,6 +3280,9 @@ node.setAttribute(name, literal);
 if (node.localName === 'input' && origName === 'value') {
 node.setAttribute(origName, '');
 }
+if (disableUpgradeEnabled && origName === 'disable-upgrade$') {
+node.setAttribute(name, '');
+}
 node.removeAttribute(origName);
 var propertyName = Polymer.CaseMap.dashToCamelCase(name);
 if (kind === 'property') {
@@ -3185,7 +3310,8 @@ return n;
 return root;
 }
 }
-};(function () {
+};
+}());(function () {
 function resolveCss(cssText, ownerDocument) {
 return cssText.replace(CSS_URL_RX, function (m, pre, url, post) {
 return pre + '\'' + resolve(url.replace(/["']/g, ''), ownerDocument) + '\'' + post;
@@ -3225,7 +3351,7 @@ tempDocBase.href = baseUri;
 return resolve(url, tempDoc);
 }
 function getUrlResolver(ownerDocument) {
-return ownerDocument.__urlResolver || (ownerDocument.__urlResolver = ownerDocument.createElement('a'));
+return ownerDocument.body.__urlResolver || (ownerDocument.body.__urlResolver = ownerDocument.createElement('a'));
 }
 var CSS_URL_RX = /(url\()([^)]*)(\))/g;
 var URL_ATTRS = {
@@ -3468,7 +3594,9 @@ hbl = host.__boundListeners = new WeakMap();
 var bl = hbl.get(target);
 if (!bl) {
 bl = {};
+if (!Polymer.Settings.isIE || target != window) {
 hbl.set(target, bl);
+}
 }
 var key = this._boundListenerKey(eventName, methodName);
 bl[key] = handler;
@@ -3541,6 +3669,19 @@ return new MouseEvent('test', { buttons: 1 }).buttons === 1;
 return false;
 }
 }();
+var SUPPORTS_PASSIVE = false;
+(function () {
+try {
+var opts = Object.defineProperty({}, 'passive', {
+get: function () {
+SUPPORTS_PASSIVE = true;
+}
+});
+window.addEventListener('test', null, opts);
+window.removeEventListener('test', null, opts);
+} catch (e) {
+}
+}());
 var IS_TOUCH_ONLY = navigator.userAgent.match(/iP(?:[oa]d|hone)|Android/);
 var mouseCanceller = function (mouseEvent) {
 var sc = mouseEvent.sourceCapabilities;
@@ -3570,7 +3711,7 @@ document.removeEventListener(en, mouseCanceller, true);
 }
 }
 }
-function ignoreMouse() {
+function ignoreMouse(ev) {
 if (!POINTERSTATE.mouse.mouseIgnoreJob) {
 setupTeardownMouseCanceller(true);
 }
@@ -3579,6 +3720,7 @@ setupTeardownMouseCanceller();
 POINTERSTATE.mouse.target = null;
 POINTERSTATE.mouse.mouseIgnoreJob = null;
 };
+POINTERSTATE.mouse.target = Polymer.dom(ev).rootTarget;
 POINTERSTATE.mouse.mouseIgnoreJob = Polymer.Debounce(POINTERSTATE.mouse.mouseIgnoreJob, unset, MOUSE_TIMEOUT);
 }
 function hasLeftMouseButton(ev) {
@@ -3645,6 +3787,7 @@ document.removeEventListener('mouseup', stateObj.upfn);
 stateObj.movefn = null;
 stateObj.upfn = null;
 }
+document.addEventListener('touchend', ignoreMouse, SUPPORTS_PASSIVE ? { passive: true } : false);
 var Gestures = {
 gestures: {},
 recognizers: [],
@@ -3693,10 +3836,6 @@ if (!HAS_NATIVE_TA) {
 if (type === 'touchstart' || type === 'touchmove') {
 Gestures.handleTouchAction(ev);
 }
-}
-if (type === 'touchend') {
-POINTERSTATE.mouse.target = Polymer.dom(ev).rootTarget;
-ignoreMouse();
 }
 }
 }
@@ -4313,20 +4452,22 @@ var list = Polymer.Base.importHref.imported = Polymer.Base.importHref.imported |
 var cached = list[link.href];
 var imprt = cached || link;
 var self = this;
-if (onload) {
 var loadListener = function (e) {
 e.target.__firedLoad = true;
 e.target.removeEventListener('load', loadListener);
+e.target.removeEventListener('error', errorListener);
 return onload.call(self, e);
 };
-imprt.addEventListener('load', loadListener);
-}
-if (onerror) {
 var errorListener = function (e) {
 e.target.__firedError = true;
+e.target.removeEventListener('load', loadListener);
 e.target.removeEventListener('error', errorListener);
 return onerror.call(self, e);
 };
+if (onload) {
+imprt.addEventListener('load', loadListener);
+}
+if (onerror) {
 imprt.addEventListener('error', errorListener);
 }
 if (cached) {
@@ -4387,7 +4528,7 @@ event = event || Polymer.CaseMap.camelToDashCase(source) + '-changed';
 this.fire(event, { value: value }, {
 bubbles: false,
 cancelable: false,
-_useCache: true
+_useCache: Polymer.Settings.eventDataCache || !Polymer.Settings.isIE
 });
 },
 _propertySetter: function (property, value, effects, fromAbove) {
@@ -4547,7 +4688,7 @@ element.addEventListener(event, function (e) {
 return context._notifyListener(changedFn, e);
 });
 }
-};Polymer.Base.extend(Polymer.Bind, {
+};Polymer.Base.mixin(Polymer.Bind, {
 _shouldAddListener: function (effect) {
 return effect.name && effect.kind != 'attribute' && effect.kind != 'text' && !effect.isCompound && effect.parts[0].mode === '{';
 },
@@ -4893,7 +5034,7 @@ var pinfo = node._propertyInfo && node._propertyInfo[property];
 if (pinfo && pinfo.readOnly) {
 return;
 }
-this.__setProperty(property, value, false, node);
+this.__setProperty(property, value, Polymer.Settings.suppressBindingNotifications, node);
 }
 },
 _computeFinalAnnotationValue: function (node, property, value, info) {
@@ -4922,6 +5063,7 @@ this._effectEffects('__static__', null, this._propertyEffects.__static__);
 }
 });(function () {
 var usePolyfillProto = Polymer.Settings.usePolyfillProto;
+var avoidInstanceProperties = Boolean(Object.getOwnPropertyDescriptor(document.documentElement, 'properties'));
 Polymer.Base._addFeature({
 _setupConfigure: function (initialConfig) {
 this._config = {};
@@ -4959,7 +5101,7 @@ var config = {};
 for (var i = 0; i < this.behaviors.length; i++) {
 this._configureProperties(this.behaviors[i].properties, config);
 }
-this._configureProperties(this.properties, config);
+this._configureProperties(avoidInstanceProperties ? this.__proto__.properties : this.properties, config);
 this.mixin(config, this._aboveConfig);
 this._config = config;
 if (this._clients && this._clients.length) {
@@ -5236,7 +5378,7 @@ path: path,
 value: value
 }, {
 bubbles: false,
-_useCache: true
+_useCache: Polymer.Settings.eventDataCache || !Polymer.Settings.isIE
 });
 },
 _EVENT_CHANGED: '-changed',
@@ -5655,6 +5797,37 @@ cssText += this.resolveCss(e.import.body.textContent, e.import);
 }
 }
 return cssText;
+},
+styleIncludesToTemplate: function (targetTemplate) {
+var styles = targetTemplate.content.querySelectorAll('style[include]');
+for (var i = 0, s; i < styles.length; i++) {
+s = styles[i];
+s.parentNode.insertBefore(this._includesToFragment(s.getAttribute('include')), s);
+}
+},
+_includesToFragment: function (styleIncludes) {
+var includeArray = styleIncludes.trim().split(' ');
+var frag = document.createDocumentFragment();
+for (var i = 0; i < includeArray.length; i++) {
+var t = Polymer.DomModule.import(includeArray[i], 'template');
+if (t) {
+this._addStylesToFragment(frag, t.content);
+}
+}
+return frag;
+},
+_addStylesToFragment: function (frag, source) {
+var s$ = source.querySelectorAll('style');
+for (var i = 0, s; i < s$.length; i++) {
+s = s$[i];
+var include = s.getAttribute('include');
+if (include) {
+frag.appendChild(this._includesToFragment(include));
+}
+if (s.textContent) {
+frag.appendChild(s.cloneNode(true));
+}
+}
 },
 isTargetedBuild: function (buildType) {
 return settings.useNativeShadow ? buildType === 'shadow' : buildType === 'shady';
@@ -6240,6 +6413,9 @@ _prepShimStyles: function () {
 if (this._template) {
 var hasTargetedCssBuild = styleUtil.isTargetedBuild(this.__cssBuild);
 if (settings.useNativeCSSProperties && this.__cssBuild === 'shadow' && hasTargetedCssBuild) {
+if (settings.preserveStyleIncludes) {
+styleUtil.styleIncludesToTemplate(this._template);
+}
 return;
 }
 this._styles = this._styles || this._collectStyles();
@@ -6817,6 +6993,9 @@ this._ownStylePropertyNames = this._styles && this._styles.length ? propertyUtil
 },
 customStyle: null,
 getComputedStyleValue: function (property) {
+if (!nativeVariables && !this._styleProperties) {
+this._computeStyleProperties();
+}
 return !nativeVariables && this._styleProperties && this._styleProperties[property] || getComputedStyle(this).getPropertyValue(property);
 },
 _setupStyleProperties: function () {
@@ -7001,7 +7180,9 @@ var XSCOPE_NAME = propertyUtils.XSCOPE_NAME;
 }());Polymer.Base._addFeature({
 _registerFeatures: function () {
 this._prepIs();
+if (this.factoryImpl) {
 this._prepConstructor();
+}
 this._prepStyles();
 },
 _finishRegisterFeatures: function () {
@@ -7021,7 +7202,7 @@ this._addHostAttributes(b.hostAttributes);
 },
 _initFeatures: function () {
 this._setupGestures();
-this._setupConfigure();
+this._setupConfigure(this.__data__);
 this._setupStyleProperties();
 this._setupDebouncers();
 this._setupShady();
@@ -7287,6 +7468,8 @@ fn: Polymer.Bind._notifyEffect,
 effect: { event: Polymer.CaseMap.camelToDashCase(parentProp) + '-changed' }
 }
 ];
+proto._propertyEffects = proto._propertyEffects || {};
+proto._propertyEffects[parentProp] = effects;
 Polymer.Bind._createAccessors(proto, parentProp, effects);
 }
 }
@@ -7328,10 +7511,15 @@ template._propertySetter = proto._propertySetter;
 }
 for (var i = 0, n; i < n$.length && (n = n$[i]); i++) {
 var val = template[n];
+if (val && n == '_propertyEffects') {
+var pe = Polymer.Base.mixin({}, val);
+template._propertyEffects = Polymer.Base.mixin(pe, proto._propertyEffects);
+} else {
 var pd = Object.getOwnPropertyDescriptor(proto, n);
 Object.defineProperty(template, n, pd);
 if (val !== undefined) {
 template._propertySetter(n, val);
+}
 }
 }
 },
@@ -7599,7 +7787,7 @@ observer: '_observeChanged'
 delay: Number,
 renderedItemCount: {
 type: Number,
-notify: true,
+notify: !Polymer.Settings.suppressTemplateNotifications,
 readOnly: true
 },
 initialCount: {
@@ -7610,6 +7798,7 @@ targetFramerate: {
 type: Number,
 value: 20
 },
+notifyDomChange: { type: Boolean },
 _targetFrameTime: {
 type: Number,
 computed: '_computeFrameTime(targetFramerate)'
@@ -7777,7 +7966,9 @@ inst.__setProperty(this.indexAs, i, true);
 }
 this._pool.length = 0;
 this._setRenderedItemCount(this._instances.length);
+if (!Polymer.Settings.suppressTemplateNotifications || this.notifyDomChange) {
 this.fire('dom-change');
+}
 this._tryRenderChunk();
 },
 _applyFullRefresh: function () {
@@ -7973,6 +8164,7 @@ return inst;
 },
 _showHideChildren: function (hidden) {
 for (var i = 0; i < this._instances.length; i++) {
+if (!this._instances[i].isPlaceholder)
 this._instances[i]._showHideChildren(hidden);
 }
 },
@@ -8141,7 +8333,8 @@ restamp: {
 type: Boolean,
 value: false,
 observer: '_queueRender'
-}
+},
+notifyDomChange: { type: Boolean }
 },
 behaviors: [Polymer.Templatizer],
 _queueRender: function () {
@@ -8174,7 +8367,9 @@ if (!this.restamp && this._instance) {
 this._showHideChildren();
 }
 if (this.if != this._lastIf) {
+if (!Polymer.Settings.suppressTemplateNotifications || this.notifyDomChange) {
 this.fire('dom-change');
+}
 this._lastIf = this.if;
 }
 },
@@ -8229,6 +8424,7 @@ this._instance._notifyPath(path, value, true);
 }
 });Polymer({
 is: 'dom-bind',
+properties: { notifyDomChange: { type: Boolean } },
 extends: 'template',
 _template: null,
 created: function () {
@@ -8309,7 +8505,9 @@ Polymer.Base._initFeatures.call(this);
 this._children = Polymer.TreeApi.arrayCopyChildNodes(this.root);
 }
 this._insertChildren();
+if (!Polymer.Settings.suppressTemplateNotifications || this.notifyDomChange) {
 this.fire('dom-change');
+}
 }
 });</script><!--
 @license
@@ -8360,9 +8558,7 @@ A complete [guide](https://elements.polymer-project.org/guides/flex-layout) to `
   [hidden] {
     display: none !important;
   }
-</style>
-
-<style is="custom-style">
+</style><style is="custom-style">
   :root {
 
     --layout: {
@@ -8413,6 +8609,12 @@ A complete [guide](https://elements.polymer-project.org/guides/flex-layout) to `
       -ms-flex-wrap: wrap;
       -webkit-flex-wrap: wrap;
       flex-wrap: wrap;
+    };
+    
+    --layout-no-wrap: {
+      -ms-flex-wrap: nowrap;
+      -webkit-flex-wrap: nowrap;
+      flex-wrap: nowrap;
     };
 
     --layout-wrap-reverse: {
@@ -8705,8 +8907,7 @@ A complete [guide](https://elements.polymer-project.org/guides/flex-layout) to `
 
   }
 
-</style>
-<!--
+</style><!--
 @license
 Copyright (c) 2015 The Polymer Project Authors. All rights reserved.
 This code may only be used under the BSD style license found at http://polymer.github.io/LICENSE.txt
@@ -10570,8 +10771,7 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
     };
   }
 
-</style>
-<dom-module id="paper-material-shared-styles" assetpath="../bower_components/paper-material/">
+</style><dom-module id="paper-material-shared-styles" assetpath="../bower_components/paper-material/">
   <template>
     <style>
       :host {
@@ -12288,7 +12488,7 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
         }
       }
     }
-  }
+  };
 
   /** @polymerBehavior */
   Polymer.PaperInputBehavior = [
@@ -12330,7 +12530,17 @@ The complete set of authors may be found at http://polymer.github.io/AUTHORS.txt
 The complete set of contributors may be found at http://polymer.github.io/CONTRIBUTORS.txt
 Code distributed by Google as part of the polymer project is also
 subject to an additional IP rights grant found at http://polymer.github.io/PATENTS.txt
---><style is="custom-style">
+--><!--
+@license
+Copyright (c) 2015 The Polymer Project Authors. All rights reserved.
+This code may only be used under the BSD style license found at http://polymer.github.io/LICENSE.txt
+The complete set of authors may be found at http://polymer.github.io/AUTHORS.txt
+The complete set of contributors may be found at http://polymer.github.io/CONTRIBUTORS.txt
+Code distributed by Google as part of the polymer project is also
+subject to an additional IP rights grant found at http://polymer.github.io/PATENTS.txt
+--><link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:400,300,300italic,400italic,500,500italic,700,700italic">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto+Mono:400,700">
+<style is="custom-style">
 
   :root {
 
@@ -12485,16 +12695,7 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
 
   }
 
-</style>
-<!--
-@license
-Copyright (c) 2015 The Polymer Project Authors. All rights reserved.
-This code may only be used under the BSD style license found at http://polymer.github.io/LICENSE.txt
-The complete set of authors may be found at http://polymer.github.io/AUTHORS.txt
-The complete set of contributors may be found at http://polymer.github.io/CONTRIBUTORS.txt
-Code distributed by Google as part of the polymer project is also
-subject to an additional IP rights grant found at http://polymer.github.io/PATENTS.txt
---><link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:400,300,300italic,400italic,500,500italic,700,700italic"><link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto+Mono:400,700"><!--
+</style><!--
 @license
 Copyright (c) 2015 The Polymer Project Authors. All rights reserved.
 This code may only be used under the BSD style license found at http://polymer.github.io/LICENSE.txt
@@ -12709,63 +12910,6 @@ Code distributed by Google as part of the polymer project is also
 subject to an additional IP rights grant found at http://polymer.github.io/PATENTS.txt
 --><!-- Taken from https://www.google.com/design/spec/style/color.html#color-ui-color-application -->
 
-<style is="custom-style">
-
-  :root {
-    /*
-     * You can use these generic variables in your elements for easy theming.
-     * For example, if all your elements use `--primary-text-color` as its main
-     * color, then switching from a light to a dark theme is just a matter of
-     * changing the value of `--primary-text-color` in your application.
-     */
-    --primary-text-color: var(--light-theme-text-color);
-    --primary-background-color: var(--light-theme-background-color);
-    --secondary-text-color: var(--light-theme-secondary-color);
-    --disabled-text-color: var(--light-theme-disabled-color);
-    --divider-color: var(--light-theme-divider-color);
-    --error-color: var(--paper-deep-orange-a700);
-
-    /*
-     * Primary and accent colors. Also see color.html for more colors.
-     */
-    --primary-color: var(--paper-indigo-500);
-    --light-primary-color: var(--paper-indigo-100);
-    --dark-primary-color: var(--paper-indigo-700);
-
-    --accent-color: var(--paper-pink-a200);
-    --light-accent-color: var(--paper-pink-a100);
-    --dark-accent-color: var(--paper-pink-a400);
-
-
-    /*
-     * Material Design Light background theme
-     */
-    --light-theme-background-color: #ffffff;
-    --light-theme-base-color: #000000;
-    --light-theme-text-color: var(--paper-grey-900);
-    --light-theme-secondary-color: #737373;  /* for secondary text and icons */
-    --light-theme-disabled-color: #9b9b9b;  /* disabled/hint text */
-    --light-theme-divider-color: #dbdbdb;
-
-    /*
-     * Material Design Dark background theme
-     */
-    --dark-theme-background-color: var(--paper-grey-900);
-    --dark-theme-base-color: #ffffff;
-    --dark-theme-text-color: #ffffff;
-    --dark-theme-secondary-color: #bcbcbc;  /* for secondary text and icons */
-    --dark-theme-disabled-color: #646464;  /* disabled/hint text */
-    --dark-theme-divider-color: #3c3c3c;
-
-    /*
-     * Deprecated values because of their confusing names.
-     */
-    --text-primary-color: var(--dark-theme-text-color);
-    --default-primary-color: var(--primary-color);
-
-  }
-
-</style>
 <!--
 @license
 Copyright (c) 2015 The Polymer Project Authors. All rights reserved.
@@ -13094,8 +13238,63 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
 
   }
 
-</style>
-<dom-module id="paper-input-container" assetpath="../bower_components/paper-input/">
+</style><style is="custom-style">
+
+  :root {
+    /*
+     * You can use these generic variables in your elements for easy theming.
+     * For example, if all your elements use `--primary-text-color` as its main
+     * color, then switching from a light to a dark theme is just a matter of
+     * changing the value of `--primary-text-color` in your application.
+     */
+    --primary-text-color: var(--light-theme-text-color);
+    --primary-background-color: var(--light-theme-background-color);
+    --secondary-text-color: var(--light-theme-secondary-color);
+    --disabled-text-color: var(--light-theme-disabled-color);
+    --divider-color: var(--light-theme-divider-color);
+    --error-color: var(--paper-deep-orange-a700);
+
+    /*
+     * Primary and accent colors. Also see color.html for more colors.
+     */
+    --primary-color: var(--paper-indigo-500);
+    --light-primary-color: var(--paper-indigo-100);
+    --dark-primary-color: var(--paper-indigo-700);
+
+    --accent-color: var(--paper-pink-a200);
+    --light-accent-color: var(--paper-pink-a100);
+    --dark-accent-color: var(--paper-pink-a400);
+
+
+    /*
+     * Material Design Light background theme
+     */
+    --light-theme-background-color: #ffffff;
+    --light-theme-base-color: #000000;
+    --light-theme-text-color: var(--paper-grey-900);
+    --light-theme-secondary-color: #737373;  /* for secondary text and icons */
+    --light-theme-disabled-color: #9b9b9b;  /* disabled/hint text */
+    --light-theme-divider-color: #dbdbdb;
+
+    /*
+     * Material Design Dark background theme
+     */
+    --dark-theme-background-color: var(--paper-grey-900);
+    --dark-theme-base-color: #ffffff;
+    --dark-theme-text-color: #ffffff;
+    --dark-theme-secondary-color: #bcbcbc;  /* for secondary text and icons */
+    --dark-theme-disabled-color: #646464;  /* disabled/hint text */
+    --dark-theme-divider-color: #3c3c3c;
+
+    /*
+     * Deprecated values because of their confusing names.
+     */
+    --text-primary-color: var(--dark-theme-text-color);
+    --default-primary-color: var(--primary-color);
+
+  }
+
+</style><dom-module id="paper-input-container" assetpath="../bower_components/paper-input/">
   <template>
     <style>
       :host {
@@ -14585,6 +14784,17 @@ Use `noOverlap` to position the element around another element without overlappi
         </iron-fit-impl>
       </div>
 
+Use `horizontalOffset, verticalOffset` to offset the element from its `positionTarget`;
+`Polymer.IronFitBehavior` will collapse these in order to keep the element
+within `fitInto` boundaries, while preserving the element's CSS margin values.
+
+      <div class="container">
+        <iron-fit-impl vertical-align="top" vertical-offset="20">
+          With vertical offset
+        </iron-fit-impl>
+      </div>
+
+
 @demo demo/index.html
 @polymerBehavior
 */
@@ -14655,8 +14865,18 @@ Use `noOverlap` to position the element around another element without overlappi
       },
 
       /**
-       * The same as setting margin-left and margin-right css properties.
-       * @deprecated
+       * A pixel value that will be added to the position calculated for the
+       * given `horizontalAlign`, in the direction of alignment. You can think
+       * of it as increasing or decreasing the distance to the side of the
+       * screen given by `horizontalAlign`.
+       *
+       * If `horizontalAlign` is "left", this offset will increase or decrease
+       * the distance to the left side of the screen: a negative offset will
+       * move the dropdown to the left; a positive one, to the right.
+       *
+       * Conversely if `horizontalAlign` is "right", this offset will increase
+       * or decrease the distance to the right side of the screen: a negative
+       * offset will move the dropdown to the right; a positive one, to the left.
        */
       horizontalOffset: {
         type: Number,
@@ -14665,8 +14885,18 @@ Use `noOverlap` to position the element around another element without overlappi
       },
 
       /**
-       * The same as setting margin-top and margin-bottom css properties.
-       * @deprecated
+       * A pixel value that will be added to the position calculated for the
+       * given `verticalAlign`, in the direction of alignment. You can think
+       * of it as increasing or decreasing the distance to the side of the
+       * screen given by `verticalAlign`.
+       *
+       * If `verticalAlign` is "top", this offset will increase or decrease
+       * the distance to the top side of the screen: a negative offset will
+       * move the dropdown upwards; a positive one, downwards.
+       *
+       * Conversely if `verticalAlign` is "bottom", this offset will increase
+       * or decrease the distance to the bottom side of the screen: a negative
+       * offset will move the dropdown downwards; a positive one, upwards.
        */
       verticalOffset: {
         type: Number,
@@ -14760,7 +14990,11 @@ Use `noOverlap` to position the element around another element without overlappi
 
     attached: function() {
       // Memoize this to avoid expensive calculations & relayouts.
-      this._isRTL = window.getComputedStyle(this).direction == 'rtl';
+      // Make sure we do it only once
+      if (typeof this._isRTL === 'undefined') {
+        this._isRTL = window.getComputedStyle(this).direction == 'rtl';
+      }
+          
       this.positionTarget = this.positionTarget || this._defaultPositionTarget;
       if (this.autoFitOnAttach) {
         if (window.getComputedStyle(this).display === 'none') {
@@ -14823,20 +15057,6 @@ Use `noOverlap` to position the element around another element without overlappi
           left: parseInt(target.marginLeft, 10) || 0
         }
       };
-
-      // Support these properties until they are removed.
-      if (this.verticalOffset) {
-        this._fitInfo.margin.top = this._fitInfo.margin.bottom = this.verticalOffset;
-        this._fitInfo.inlineStyle.marginTop = this.style.marginTop || '';
-        this._fitInfo.inlineStyle.marginBottom = this.style.marginBottom || '';
-        this.style.marginTop = this.style.marginBottom = this.verticalOffset + 'px';
-      }
-      if (this.horizontalOffset) {
-        this._fitInfo.margin.left = this._fitInfo.margin.right = this.horizontalOffset;
-        this._fitInfo.inlineStyle.marginLeft = this.style.marginLeft || '';
-        this._fitInfo.inlineStyle.marginRight = this.style.marginRight || '';
-        this.style.marginLeft = this.style.marginRight = this.horizontalOffset + 'px';
-      }
     },
 
     /**
@@ -14904,27 +15124,20 @@ Use `noOverlap` to position the element around another element without overlappi
       var left = position.left + margin.left;
       var top = position.top + margin.top;
 
-      // Use original size (without margin).
+      // We first limit right/bottom within fitInto respecting the margin,
+      // then use those values to limit top/left.
       var right = Math.min(fitRect.right - margin.right, left + rect.width);
       var bottom = Math.min(fitRect.bottom - margin.bottom, top + rect.height);
 
-      var minWidth = this._fitInfo.sizedBy.minWidth;
-      var minHeight = this._fitInfo.sizedBy.minHeight;
-      if (left < margin.left) {
-        left = margin.left;
-        if (right - left < minWidth) {
-          left = right - minWidth;
-        }
-      }
-      if (top < margin.top) {
-        top = margin.top;
-        if (bottom - top < minHeight) {
-          top = bottom - minHeight;
-        }
-      }
+      // Keep left/top within fitInto respecting the margin.
+      left = Math.max(fitRect.left + margin.left,
+        Math.min(left, right - this._fitInfo.sizedBy.minWidth));
+      top = Math.max(fitRect.top + margin.top,
+        Math.min(top, bottom - this._fitInfo.sizedBy.minHeight));
 
-      this.sizingTarget.style.maxWidth = (right - left) + 'px';
-      this.sizingTarget.style.maxHeight = (bottom - top) + 'px';
+      // Use right/bottom to set maxWidth/maxHeight, and respect minWidth/minHeight.
+      this.sizingTarget.style.maxWidth = Math.max(right - left, this._fitInfo.sizedBy.minWidth) + 'px';
+      this.sizingTarget.style.maxHeight = Math.max(bottom - top, this._fitInfo.sizedBy.minHeight) + 'px';
 
       // Remove the offset caused by any stacking context.
       this.style.left = (left - rect.left) + 'px';
@@ -15053,23 +15266,23 @@ Use `noOverlap` to position the element around another element without overlappi
       var positions = [{
         verticalAlign: 'top',
         horizontalAlign: 'left',
-        top: positionRect.top,
-        left: positionRect.left
+        top: positionRect.top + this.verticalOffset,
+        left: positionRect.left + this.horizontalOffset
       }, {
         verticalAlign: 'top',
         horizontalAlign: 'right',
-        top: positionRect.top,
-        left: positionRect.right - size.width
+        top: positionRect.top + this.verticalOffset,
+        left: positionRect.right - size.width - this.horizontalOffset
       }, {
         verticalAlign: 'bottom',
         horizontalAlign: 'left',
-        top: positionRect.bottom - size.height,
-        left: positionRect.left
+        top: positionRect.bottom - size.height - this.verticalOffset,
+        left: positionRect.left + this.horizontalOffset
       }, {
         verticalAlign: 'bottom',
         horizontalAlign: 'right',
-        top: positionRect.bottom - size.height,
-        left: positionRect.right - size.width
+        top: positionRect.bottom - size.height - this.verticalOffset,
+        left: positionRect.right - size.width - this.horizontalOffset
       }];
 
       if (this.noOverlap) {
@@ -15358,7 +15571,7 @@ Custom property | Description | Default
 `--iron-overlay-backdrop-opened`           | Mixin applied to `iron-overlay-backdrop` when it is displayed | {}
 -->
 
-<dom-module id="iron-overlay-backdrop" assetpath="/">
+<dom-module id="iron-overlay-backdrop" assetpath="../bower_components/iron-overlay-behavior/">
 
   <template>
     <style>
@@ -15526,8 +15739,11 @@ Custom property | Description | Default
     this._backdropElement = null;
 
     // Enable document-wide tap recognizer.
-    Polymer.Gestures.add(document, 'tap', this._onCaptureClick.bind(this));
-
+    // NOTE: Use useCapture=true to avoid accidentally prevention of the closing
+    // of an overlay via event.stopPropagation(). The only way to prevent
+    // closing of an overlay should be through its APIs.
+    Polymer.Gestures.add(document, 'tap', null);
+    document.addEventListener('tap', this._onCaptureClick.bind(this), true);
     document.addEventListener('focus', this._onCaptureFocus.bind(this), true);
     document.addEventListener('keydown', this._onCaptureKeyDown.bind(this), true);
   };
@@ -16062,51 +16278,9 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
   })();
 </script><script>
 (function() {
-'use strict';
+  'use strict';
 
-/**
-Use `Polymer.IronOverlayBehavior` to implement an element that can be hidden or shown, and displays
-on top of other content. It includes an optional backdrop, and can be used to implement a variety
-of UI controls including dialogs and drop downs. Multiple overlays may be displayed at once.
-
-See the [demo source code](https://github.com/PolymerElements/iron-overlay-behavior/blob/master/demo/simple-overlay.html)
-for an example.
-
-### Closing and canceling
-
-An overlay may be hidden by closing or canceling. The difference between close and cancel is user
-intent. Closing generally implies that the user acknowledged the content on the overlay. By default,
-it will cancel whenever the user taps outside it or presses the escape key. This behavior is
-configurable with the `no-cancel-on-esc-key` and the `no-cancel-on-outside-click` properties.
-`close()` should be called explicitly by the implementer when the user interacts with a control
-in the overlay element. When the dialog is canceled, the overlay fires an 'iron-overlay-canceled'
-event. Call `preventDefault` on this event to prevent the overlay from closing.
-
-### Positioning
-
-By default the element is sized and positioned to fit and centered inside the window. You can
-position and size it manually using CSS. See `Polymer.IronFitBehavior`.
-
-### Backdrop
-
-Set the `with-backdrop` attribute to display a backdrop behind the overlay. The backdrop is
-appended to `<body>` and is of type `<iron-overlay-backdrop>`. See its doc page for styling
-options.
-
-In addition, `with-backdrop` will wrap the focus within the content in the light DOM.
-Override the [`_focusableNodes` getter](#Polymer.IronOverlayBehavior:property-_focusableNodes)
-to achieve a different behavior.
-
-### Limitations
-
-The element is styled to appear on top of other content by setting its `z-index` property. You
-must ensure no element has a stacking context with a higher `z-index` than its parent stacking
-context. You should place this element as a child of `<body>` whenever possible.
-
-@demo demo/index.html
-@polymerBehavior Polymer.IronOverlayBehavior
-*/
-
+  /** @polymerBehavior */
   Polymer.IronOverlayBehaviorImpl = {
 
     properties: {
@@ -16657,7 +16831,48 @@ context. You should place this element as a child of `<body>` whenever possible.
 
   };
 
-  /** @polymerBehavior */
+  /**
+  Use `Polymer.IronOverlayBehavior` to implement an element that can be hidden or shown, and displays
+  on top of other content. It includes an optional backdrop, and can be used to implement a variety
+  of UI controls including dialogs and drop downs. Multiple overlays may be displayed at once.
+
+  See the [demo source code](https://github.com/PolymerElements/iron-overlay-behavior/blob/master/demo/simple-overlay.html)
+  for an example.
+
+  ### Closing and canceling
+
+  An overlay may be hidden by closing or canceling. The difference between close and cancel is user
+  intent. Closing generally implies that the user acknowledged the content on the overlay. By default,
+  it will cancel whenever the user taps outside it or presses the escape key. This behavior is
+  configurable with the `no-cancel-on-esc-key` and the `no-cancel-on-outside-click` properties.
+  `close()` should be called explicitly by the implementer when the user interacts with a control
+  in the overlay element. When the dialog is canceled, the overlay fires an 'iron-overlay-canceled'
+  event. Call `preventDefault` on this event to prevent the overlay from closing.
+
+  ### Positioning
+
+  By default the element is sized and positioned to fit and centered inside the window. You can
+  position and size it manually using CSS. See `Polymer.IronFitBehavior`.
+
+  ### Backdrop
+
+  Set the `with-backdrop` attribute to display a backdrop behind the overlay. The backdrop is
+  appended to `<body>` and is of type `<iron-overlay-backdrop>`. See its doc page for styling
+  options.
+
+  In addition, `with-backdrop` will wrap the focus within the content in the light DOM.
+  Override the [`_focusableNodes` getter](#Polymer.IronOverlayBehavior:property-_focusableNodes)
+  to achieve a different behavior.
+
+  ### Limitations
+
+  The element is styled to appear on top of other content by setting its `z-index` property. You
+  must ensure no element has a stacking context with a higher `z-index` than its parent stacking
+  context. You should place this element as a child of `<body>` whenever possible.
+
+  @demo demo/index.html
+  @polymerBehavior
+  */
   Polymer.IronOverlayBehavior = [Polymer.IronFitBehavior, Polymer.IronResizableBehavior, Polymer.IronOverlayBehaviorImpl];
 
   /**
@@ -18270,302 +18485,7 @@ The complete set of authors may be found at http://polymer.github.io/AUTHORS.txt
 The complete set of contributors may be found at http://polymer.github.io/CONTRIBUTORS.txt
 Code distributed by Google as part of the polymer project is also
 subject to an additional IP rights grant found at http://polymer.github.io/PATENTS.txt
---><style>
-
-  /*******************************
-            Flex Layout
-  *******************************/
-
-  .layout.horizontal,
-  .layout.horizontal-reverse,
-  .layout.vertical,
-  .layout.vertical-reverse {
-    display: -ms-flexbox;
-    display: -webkit-flex;
-    display: flex;
-  }
-
-  .layout.inline {
-    display: -ms-inline-flexbox;
-    display: -webkit-inline-flex;
-    display: inline-flex;
-  }
-
-  .layout.horizontal {
-    -ms-flex-direction: row;
-    -webkit-flex-direction: row;
-    flex-direction: row;
-  }
-
-  .layout.horizontal-reverse {
-    -ms-flex-direction: row-reverse;
-    -webkit-flex-direction: row-reverse;
-    flex-direction: row-reverse;
-  }
-
-  .layout.vertical {
-    -ms-flex-direction: column;
-    -webkit-flex-direction: column;
-    flex-direction: column;
-  }
-
-  .layout.vertical-reverse {
-    -ms-flex-direction: column-reverse;
-    -webkit-flex-direction: column-reverse;
-    flex-direction: column-reverse;
-  }
-
-  .layout.wrap {
-    -ms-flex-wrap: wrap;
-    -webkit-flex-wrap: wrap;
-    flex-wrap: wrap;
-  }
-
-  .layout.wrap-reverse {
-    -ms-flex-wrap: wrap-reverse;
-    -webkit-flex-wrap: wrap-reverse;
-    flex-wrap: wrap-reverse;
-  }
-
-  .flex-auto {
-    -ms-flex: 1 1 auto;
-    -webkit-flex: 1 1 auto;
-    flex: 1 1 auto;
-  }
-
-  .flex-none {
-    -ms-flex: none;
-    -webkit-flex: none;
-    flex: none;
-  }
-
-  .flex,
-  .flex-1 {
-    -ms-flex: 1;
-    -webkit-flex: 1;
-    flex: 1;
-  }
-
-  .flex-2 {
-    -ms-flex: 2;
-    -webkit-flex: 2;
-    flex: 2;
-  }
-
-  .flex-3 {
-    -ms-flex: 3;
-    -webkit-flex: 3;
-    flex: 3;
-  }
-
-  .flex-4 {
-    -ms-flex: 4;
-    -webkit-flex: 4;
-    flex: 4;
-  }
-
-  .flex-5 {
-    -ms-flex: 5;
-    -webkit-flex: 5;
-    flex: 5;
-  }
-
-  .flex-6 {
-    -ms-flex: 6;
-    -webkit-flex: 6;
-    flex: 6;
-  }
-
-  .flex-7 {
-    -ms-flex: 7;
-    -webkit-flex: 7;
-    flex: 7;
-  }
-
-  .flex-8 {
-    -ms-flex: 8;
-    -webkit-flex: 8;
-    flex: 8;
-  }
-
-  .flex-9 {
-    -ms-flex: 9;
-    -webkit-flex: 9;
-    flex: 9;
-  }
-
-  .flex-10 {
-    -ms-flex: 10;
-    -webkit-flex: 10;
-    flex: 10;
-  }
-
-  .flex-11 {
-    -ms-flex: 11;
-    -webkit-flex: 11;
-    flex: 11;
-  }
-
-  .flex-12 {
-    -ms-flex: 12;
-    -webkit-flex: 12;
-    flex: 12;
-  }
-
-  /* alignment in cross axis */
-
-  .layout.start {
-    -ms-flex-align: start;
-    -webkit-align-items: flex-start;
-    align-items: flex-start;
-  }
-
-  .layout.center,
-  .layout.center-center {
-    -ms-flex-align: center;
-    -webkit-align-items: center;
-    align-items: center;
-  }
-
-  .layout.end {
-    -ms-flex-align: end;
-    -webkit-align-items: flex-end;
-    align-items: flex-end;
-  }
-
-  /* alignment in main axis */
-
-  .layout.start-justified {
-    -ms-flex-pack: start;
-    -webkit-justify-content: flex-start;
-    justify-content: flex-start;
-  }
-
-  .layout.center-justified,
-  .layout.center-center {
-    -ms-flex-pack: center;
-    -webkit-justify-content: center;
-    justify-content: center;
-  }
-
-  .layout.end-justified {
-    -ms-flex-pack: end;
-    -webkit-justify-content: flex-end;
-    justify-content: flex-end;
-  }
-
-  .layout.around-justified {
-    -ms-flex-pack: around;
-    -webkit-justify-content: space-around;
-    justify-content: space-around;
-  }
-
-  .layout.justified {
-    -ms-flex-pack: justify;
-    -webkit-justify-content: space-between;
-    justify-content: space-between;
-  }
-
-  /* self alignment */
-
-  .self-start {
-    -ms-align-self: flex-start;
-    -webkit-align-self: flex-start;
-    align-self: flex-start;
-  }
-
-  .self-center {
-    -ms-align-self: center;
-    -webkit-align-self: center;
-    align-self: center;
-  }
-
-  .self-end {
-    -ms-align-self: flex-end;
-    -webkit-align-self: flex-end;
-    align-self: flex-end;
-  }
-
-  .self-stretch {
-    -ms-align-self: stretch;
-    -webkit-align-self: stretch;
-    align-self: stretch;
-  }
-
-  /*******************************
-            Other Layout
-  *******************************/
-
-  .block {
-    display: block;
-  }
-
-  /* IE 10 support for HTML5 hidden attr */
-  [hidden] {
-    display: none !important;
-  }
-
-  .invisible {
-    visibility: hidden !important;
-  }
-
-  .relative {
-    position: relative;
-  }
-
-  .fit {
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    left: 0;
-  }
-
-  body.fullbleed {
-    margin: 0;
-    height: 100vh;
-  }
-
-  .scroll {
-    -webkit-overflow-scrolling: touch;
-    overflow: auto;
-  }
-
-  /* fixed position */
-
-  .fixed-bottom,
-  .fixed-left,
-  .fixed-right,
-  .fixed-top {
-    position: fixed;
-  }
-
-  .fixed-top {
-    top: 0;
-    left: 0;
-    right: 0;
-  }
-
-  .fixed-right {
-    top: 0;
-    right: 0;
-    bottom: 0;
-  }
-
-  .fixed-bottom {
-    right: 0;
-    bottom: 0;
-    left: 0;
-  }
-
-  .fixed-left {
-    top: 0;
-    bottom: 0;
-    left: 0;
-  }
-
-</style>
-<!--
+--><!--
 @license
 Copyright (c) 2015 The Polymer Project Authors. All rights reserved.
 This code may only be used under the BSD style license found at http://polymer.github.io/LICENSE.txt
@@ -18573,7 +18493,11 @@ The complete set of authors may be found at http://polymer.github.io/AUTHORS.txt
 The complete set of contributors may be found at http://polymer.github.io/CONTRIBUTORS.txt
 Code distributed by Google as part of the polymer project is also
 subject to an additional IP rights grant found at http://polymer.github.io/PATENTS.txt
---><style>
+--><script>
+  console.warn('This file is deprecated. Please use `iron-flex-layout/iron-flex-layout-classes.html`, and one of the specific dom-modules instead');
+</script>
+
+<style>
 
   /*******************************
             Flex Layout
@@ -18622,6 +18546,12 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
     -ms-flex-wrap: wrap;
     -webkit-flex-wrap: wrap;
     flex-wrap: wrap;
+  }
+  
+  html /deep/ .layout-no-wrap {
+    -ms-flex-wrap: nowrap;
+    -webkit-flex-wrap: nowrap;
+    flex-wrap: nowrap;
   }
 
   html /deep/ .layout.wrap-reverse {
@@ -18868,9 +18798,307 @@ subject to an additional IP rights grant found at http://polymer.github.io/PATEN
 </style>
 <script>
   console.warn('This file is deprecated. Please use `iron-flex-layout/iron-flex-layout-classes.html`, and one of the specific dom-modules instead');
-</script><script>
-  console.warn('This file is deprecated. Please use `iron-flex-layout/iron-flex-layout-classes.html`, and one of the specific dom-modules instead');
-</script><!--
+</script><style>
+
+  /*******************************
+            Flex Layout
+  *******************************/
+
+  .layout.horizontal,
+  .layout.horizontal-reverse,
+  .layout.vertical,
+  .layout.vertical-reverse {
+    display: -ms-flexbox;
+    display: -webkit-flex;
+    display: flex;
+  }
+
+  .layout.inline {
+    display: -ms-inline-flexbox;
+    display: -webkit-inline-flex;
+    display: inline-flex;
+  }
+
+  .layout.horizontal {
+    -ms-flex-direction: row;
+    -webkit-flex-direction: row;
+    flex-direction: row;
+  }
+
+  .layout.horizontal-reverse {
+    -ms-flex-direction: row-reverse;
+    -webkit-flex-direction: row-reverse;
+    flex-direction: row-reverse;
+  }
+
+  .layout.vertical {
+    -ms-flex-direction: column;
+    -webkit-flex-direction: column;
+    flex-direction: column;
+  }
+
+  .layout.vertical-reverse {
+    -ms-flex-direction: column-reverse;
+    -webkit-flex-direction: column-reverse;
+    flex-direction: column-reverse;
+  }
+
+  .layout.wrap {
+    -ms-flex-wrap: wrap;
+    -webkit-flex-wrap: wrap;
+    flex-wrap: wrap;
+  }
+  
+  .layout.no-wrap {
+    -ms-flex-wrap: nowrap;
+    -webkit-flex-wrap: nowrap;
+    flex-wrap: nowrap;
+  }
+
+  .layout.wrap-reverse {
+    -ms-flex-wrap: wrap-reverse;
+    -webkit-flex-wrap: wrap-reverse;
+    flex-wrap: wrap-reverse;
+  }
+
+  .flex-auto {
+    -ms-flex: 1 1 auto;
+    -webkit-flex: 1 1 auto;
+    flex: 1 1 auto;
+  }
+
+  .flex-none {
+    -ms-flex: none;
+    -webkit-flex: none;
+    flex: none;
+  }
+
+  .flex,
+  .flex-1 {
+    -ms-flex: 1;
+    -webkit-flex: 1;
+    flex: 1;
+  }
+
+  .flex-2 {
+    -ms-flex: 2;
+    -webkit-flex: 2;
+    flex: 2;
+  }
+
+  .flex-3 {
+    -ms-flex: 3;
+    -webkit-flex: 3;
+    flex: 3;
+  }
+
+  .flex-4 {
+    -ms-flex: 4;
+    -webkit-flex: 4;
+    flex: 4;
+  }
+
+  .flex-5 {
+    -ms-flex: 5;
+    -webkit-flex: 5;
+    flex: 5;
+  }
+
+  .flex-6 {
+    -ms-flex: 6;
+    -webkit-flex: 6;
+    flex: 6;
+  }
+
+  .flex-7 {
+    -ms-flex: 7;
+    -webkit-flex: 7;
+    flex: 7;
+  }
+
+  .flex-8 {
+    -ms-flex: 8;
+    -webkit-flex: 8;
+    flex: 8;
+  }
+
+  .flex-9 {
+    -ms-flex: 9;
+    -webkit-flex: 9;
+    flex: 9;
+  }
+
+  .flex-10 {
+    -ms-flex: 10;
+    -webkit-flex: 10;
+    flex: 10;
+  }
+
+  .flex-11 {
+    -ms-flex: 11;
+    -webkit-flex: 11;
+    flex: 11;
+  }
+
+  .flex-12 {
+    -ms-flex: 12;
+    -webkit-flex: 12;
+    flex: 12;
+  }
+
+  /* alignment in cross axis */
+
+  .layout.start {
+    -ms-flex-align: start;
+    -webkit-align-items: flex-start;
+    align-items: flex-start;
+  }
+
+  .layout.center,
+  .layout.center-center {
+    -ms-flex-align: center;
+    -webkit-align-items: center;
+    align-items: center;
+  }
+
+  .layout.end {
+    -ms-flex-align: end;
+    -webkit-align-items: flex-end;
+    align-items: flex-end;
+  }
+
+  /* alignment in main axis */
+
+  .layout.start-justified {
+    -ms-flex-pack: start;
+    -webkit-justify-content: flex-start;
+    justify-content: flex-start;
+  }
+
+  .layout.center-justified,
+  .layout.center-center {
+    -ms-flex-pack: center;
+    -webkit-justify-content: center;
+    justify-content: center;
+  }
+
+  .layout.end-justified {
+    -ms-flex-pack: end;
+    -webkit-justify-content: flex-end;
+    justify-content: flex-end;
+  }
+
+  .layout.around-justified {
+    -ms-flex-pack: around;
+    -webkit-justify-content: space-around;
+    justify-content: space-around;
+  }
+
+  .layout.justified {
+    -ms-flex-pack: justify;
+    -webkit-justify-content: space-between;
+    justify-content: space-between;
+  }
+
+  /* self alignment */
+
+  .self-start {
+    -ms-align-self: flex-start;
+    -webkit-align-self: flex-start;
+    align-self: flex-start;
+  }
+
+  .self-center {
+    -ms-align-self: center;
+    -webkit-align-self: center;
+    align-self: center;
+  }
+
+  .self-end {
+    -ms-align-self: flex-end;
+    -webkit-align-self: flex-end;
+    align-self: flex-end;
+  }
+
+  .self-stretch {
+    -ms-align-self: stretch;
+    -webkit-align-self: stretch;
+    align-self: stretch;
+  }
+
+  /*******************************
+            Other Layout
+  *******************************/
+
+  .block {
+    display: block;
+  }
+
+  /* IE 10 support for HTML5 hidden attr */
+  [hidden] {
+    display: none !important;
+  }
+
+  .invisible {
+    visibility: hidden !important;
+  }
+
+  .relative {
+    position: relative;
+  }
+
+  .fit {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+  }
+
+  body.fullbleed {
+    margin: 0;
+    height: 100vh;
+  }
+
+  .scroll {
+    -webkit-overflow-scrolling: touch;
+    overflow: auto;
+  }
+
+  /* fixed position */
+
+  .fixed-bottom,
+  .fixed-left,
+  .fixed-right,
+  .fixed-top {
+    position: fixed;
+  }
+
+  .fixed-top {
+    top: 0;
+    left: 0;
+    right: 0;
+  }
+
+  .fixed-right {
+    top: 0;
+    right: 0;
+    bottom: 0;
+  }
+
+  .fixed-bottom {
+    right: 0;
+    bottom: 0;
+    left: 0;
+  }
+
+  .fixed-left {
+    top: 0;
+    bottom: 0;
+    left: 0;
+  }
+
+</style><!--
 @license
 Copyright (c) 2015 The Polymer Project Authors. All rights reserved.
 This code may only be used under the BSD style license found at http://polymer.github.io/LICENSE.txt
@@ -19104,4 +19332,68 @@ Custom property              | Description                  | Default
         });
     </script>
 </dom-module>
-</div></body></html>
+<dom-module id="tnt-d3" assetpath="./">
+
+    
+    <template>
+        <styles>
+
+        </styles>
+
+        <h1 id="header"></h1>
+
+    </template>
+
+    <script>
+        Polymer({
+            is: 'tnt-d3',
+            ready: function() {
+                var body = d3.select('body');
+                var headerElement = this.$$('#header');
+                var header = d3.select(headerElement);
+                header.text('D3 versión '  + d3.version);
+                header.style('text-transform', 'uppercase');
+            }
+        })
+    </script>
+
+</dom-module><dom-module id="tnt-circulo" assetpath="./">
+
+    
+    <template>
+        <styles>
+
+        </styles>
+
+        <div id="d3-chart" #chart=""></div>
+
+    </template>
+
+    <script>
+        Polymer({
+            is: 'tnt-circulo',
+            ready: function() {
+               var element = this.$$('#d3-chart');
+                var svg = d3.select(element).append('svg').attr('width', 400).attr('height', 400);
+                svg.append('circle')
+                .attr('class', 'circle')
+                .attr('cx', 100)
+                .attr('cy', 100)
+                .attr('r', 50)
+                .style('fill', 'steelblue')
+                .on('mouseenter', (d, i, a) => {
+                    console.log(i);
+                    console.log(a);
+                    d3.select(a[0]).attr('r', 20);
+                })
+                .on('mouseleave', (d, i, a) => {
+                    d3.select(a[0]).attr('r', 50);
+                })
+                .transition()
+                    .duration(6000)
+                    .attr('r', (d) => { return 100; });;
+            }
+        })
+    </script>
+
+</dom-module></div></body></html>
