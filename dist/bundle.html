@@ -19491,4 +19491,68 @@ This program is available under Apache License Version 2.0, available at https:/
         });
     </script>
 </dom-module>
-</div></body></html>
+<dom-module id="tnt-d3" assetpath="./">
+
+    
+    <template>
+        <styles>
+
+        </styles>
+
+        <h1 id="header"></h1>
+
+    </template>
+
+    <script>
+        Polymer({
+            is: 'tnt-d3',
+            ready: function() {
+                var body = d3.select('body');
+                var headerElement = this.$$('#header');
+                var header = d3.select(headerElement);
+                header.text('D3 versión '  + d3.version);
+                header.style('text-transform', 'uppercase');
+            }
+        })
+    </script>
+
+</dom-module><dom-module id="tnt-circulo" assetpath="./">
+
+    
+    <template>
+        <styles>
+
+        </styles>
+
+        <div id="d3-chart" #chart=""></div>
+
+    </template>
+
+    <script>
+        Polymer({
+            is: 'tnt-circulo',
+            ready: function() {
+               var element = this.$$('#d3-chart');
+                var svg = d3.select(element).append('svg').attr('width', 400).attr('height', 400);
+                svg.append('circle')
+                .attr('class', 'circle')
+                .attr('cx', 100)
+                .attr('cy', 100)
+                .attr('r', 50)
+                .style('fill', 'steelblue')
+                .on('mouseenter', (d, i, a) => {
+                    console.log(i);
+                    console.log(a);
+                    d3.select(a[0]).attr('r', 20);
+                })
+                .on('mouseleave', (d, i, a) => {
+                    d3.select(a[0]).attr('r', 50);
+                })
+                .transition()
+                    .duration(6000)
+                    .attr('r', (d) => { return 100; });;
+            }
+        })
+    </script>
+
+</dom-module></div></body></html>

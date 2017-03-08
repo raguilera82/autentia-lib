@@ -7,6 +7,7 @@
   <script src="bower_components/webcomponentsjs/webcomponents-lite.js"></script>
   <link rel="import" href="bower_components/polymer/polymer.html" />
   <link rel="import" href="lib/elements.html" />
+  <script src="https://d3js.org/d3.v4.min.js"></script>
 </head>
 
 <body>
@@ -22,13 +23,10 @@
       </div>
     </vaadin-split-layout>
 
-  <div style="width: 20%;">
+  <tnt-d3></tnt-d3>
 
-    <tnt-toolbar title="Showcase"></tnt-toolbar>
-
-    <tnt-user user='{"login": "Ruben", "avatar": "https://avatars.githubusercontent.com/u/818068?v=3", "admin": true}'></tnt-user>
-
-  </div>
+  <tnt-circulo></tnt-circulo>
+  
 </body>
 
 <script>
