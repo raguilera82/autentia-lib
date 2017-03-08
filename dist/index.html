@@ -1,16 +1,28 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="utf-8">
   <title>Autentia University Lib</title>
-  <link rel="import" href="bundle.html"/>
+  <link rel="import" href="bundle.html" />
   <script src="https://d3js.org/d3.v4.min.js"></script>
 </head>
+
 <body>
 
-  <tnt-toolbar title="Showcase"></tnt-toolbar>
+  <vaadin-split-layout id="simple">
+    <div id="demo-nav">
+      <h3>Split Demo Left</h3>
+    </div>
+    <div id="demo-content">
+      <h3>Split Demo Right</h3>
+    </div>
+  </vaadin-split-layout>
 
-  <tnt-user user='{"login": "Ruben", "avatar": "https://avatars.githubusercontent.com/u/818068?v=3", "admin": true}'></tnt-user>
+  <div style="width: 20%">
+    <tnt-toolbar title="Showcase"></tnt-toolbar>
+    <tnt-user user='{"login": "Ruben", "avatar": "https://avatars.githubusercontent.com/u/818068?v=3", "admin": true}'></tnt-user>
+  </div>
 
   <tnt-d3></tnt-d3>
 
@@ -18,10 +30,10 @@
 
 </body>
 
-  <script>
-    document.addEventListener('select-user', function($event){
-      alert($event.detail)
-    })
-  </script>
+<script>
+  document.addEventListener('select-user', function ($event) {
+    alert($event.detail)
+  })
+</script>
 
 </html>
