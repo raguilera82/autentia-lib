@@ -1,13 +1,38 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="utf-8">
   <title>Autentia University Lib</title>
   <script src="bower_components/webcomponentsjs/webcomponents-lite.js"></script>
-  <link rel="import" href="bower_components/polymer/polymer.html"/>
-  <link rel="import" href="lib/elements.html"/>
+  <link rel="import" href="bower_components/polymer/polymer.html" />
+  <link rel="import" href="lib/elements.html" />
+  <script src="https://d3js.org/d3.v4.min.js"></script>
 </head>
+
 <body>
 
+  <vaadin-split-layout id="simple">
+      <div id="demo-nav">
+        <paper-item focused>Inbox</paper-item>
+        <paper-item>Important</paper-item>
+        <paper-item>Spam</paper-item>
+      </div>
+      <div id="demo-content">
+        <h3>Demo Content</h3>
+      </div>
+    </vaadin-split-layout>
+
+  <tnt-d3></tnt-d3>
+
+  <tnt-circulo></tnt-circulo>
+  
 </body>
+
+<script>
+  document.addEventListener('select-user', function ($event) {
+    alert($event.detail)
+  })
+</script>
+
 </html>

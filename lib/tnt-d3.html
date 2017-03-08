@@ -1,0 +1,26 @@
+<dom-module id="tnt-d3">
+
+    
+    <template>
+        <styles>
+
+        </styles>
+
+        <h1 id="header"></h1>
+
+    </template>
+
+    <script>
+        Polymer({
+            is: 'tnt-d3',
+            ready: function() {
+                var body = d3.select('body');
+                var headerElement = this.$$('#header');
+                var header = d3.select(headerElement);
+                header.text('D3 versión '  + d3.version);
+                header.style('text-transform', 'uppercase');
+            }
+        })
+    </script>
+
+</dom-module>
