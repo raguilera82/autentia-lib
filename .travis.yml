@@ -19,6 +19,8 @@ before_install:
 - npm i -g npm@^3.0.0
 
 before_script:
+- npm install -g bower
+- bower install
 - npm prune
 
 script:
