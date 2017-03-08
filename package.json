@@ -8,8 +8,7 @@
     "bower": "./node_modules/bower/bin/bower",
     "live": "./node_modules/live-server/live-server.js",
     "pro": "vulcanize lib/elements.html > dist/bundle.html; cp bower_components/webcomponentsjs/webcomponents.min.js dist/webcomponents.min.js",
-    "publish": "npm publish --registry=http://localhost:8081/repository/npm-internal/",
-    "postinstall": "cp ../autentia-lib/dist/bundle.html ../autentia-lib/dist/webcomponents.min.js ../../src/assets/"
+    "publish": "npm publish --registry=http://localhost:8081/repository/npm-internal/"
   },
   "keywords": [],
   "author": "",
