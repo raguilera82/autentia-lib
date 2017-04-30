@@ -1,22 +1,27 @@
 {
   "name": "autentia-lib",
-  "version": "1.7.0",
+  "version": "2.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "bower": "./node_modules/bower/bin/bower",
     "live": "./node_modules/live-server/live-server.js",
-    "pro": "vulcanize lib/elements.html > dist/bundle.html; cp bower_components/webcomponentsjs/webcomponents.min.js dist/webcomponents.min.js",
+    "pro": "vulcanize lib/elements.html > dist/bundle.html; cp bower_components/webcomponentsjs/webcomponents-loader.js dist/webcomponents-loader.js;cp bower_components/shadycss/apply-shim.min.js dist/apply-shim.min.js;cp bower_components/shadycss/custom-style-interface.min.js dist/custom-style-interface.min.js ",
     "publish": "npm publish --registry=http://localhost:8081/repository/npm-internal/"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "bower": "^1.7.9",
-    "live-server": "^1.1.0",
-    "vulcanize": "^1.14.12"
+    "bower": "^1.8.0",
+    "live-server": "^1.2.0",
+    "polymer-cli": "^0.18.1",
+    "vulcanize": "^1.15.4"
   },
-  "files": ["dist/bundle.html", "dist/webcomponents.min.js"]
+  "files": [
+    "dist/bundle.html",
+    "dist/webcomponents.min.js"
+  ],
+  "dependencies": {}
 }
