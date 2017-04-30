@@ -7,7 +7,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "bower": "./node_modules/bower/bin/bower",
     "live": "./node_modules/live-server/live-server.js",
-    "pro": "vulcanize lib/elements.html > dist/bundle.html; cp bower_components/webcomponentsjs/webcomponents-loader.js dist/webcomponents-loader.js;cp bower_components/shadycss/apply-shim.min.js dist/apply-shim.min.js;cp bower_components/shadycss/custom-style-interface.min.js dist/custom-style-interface.min.js ",
+    "pro": "vulcanize lib/elements.html > dist/bundle.html; cp bower_components/webcomponentsjs/webcomponents-loader.js dist/webcomponents-loader.js",
     "publish": "npm publish --registry=http://localhost:8081/repository/npm-internal/"
   },
   "keywords": [],
